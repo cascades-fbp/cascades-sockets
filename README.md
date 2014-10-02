@@ -8,7 +8,7 @@ This repository contains the following components:
 
 ## TCP Server component
 
-Usage of MQTT's publication component:
+Usage of the server component:
 
 ```
 $ ./components/tcp/server
