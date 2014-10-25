@@ -1,8 +1,9 @@
 package main
 
 import (
-	uuid "github.com/nu7hatch/gouuid"
 	"net"
+
+	uuid "github.com/nu7hatch/gouuid"
 )
 
 // Connection
