@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"syscall"
+	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -23,6 +25,7 @@ var (
 
 	// Internal
 	optionsPort, inPort, outPort *zmq.Socket
+	inCh, outCh                  chan bool
 	err                          error
 )
 
@@ -42,10 +45,10 @@ func validateArgs() {
 }
 
 func openPorts() {
-	optionsPort, err = utils.CreateInputPort(*optionsEndpoint)
+	optionsPort, err = utils.CreateInputPort("tcp/server.options", *optionsEndpoint, nil)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+	inPort, err = utils.CreateInputPort("tcp/server.in", *inputEndpoint, inCh)
 	utils.AssertError(err)
 }
 
@@ -76,13 +79,60 @@ func main() {
 
 	validateArgs()
 
+	service := NewService()
+	ch := utils.HandleInterruption()
+	inCh = make(chan bool)
+	outCh = make(chan bool)
+
 	openPorts()
 	defer closePorts()
 
-	utils.HandleInterruption()
+	go func() {
+		outPort, err = utils.CreateOutputPort("tcp/server.out", *outputEndpoint, outCh)
+		utils.AssertError(err)
+		for data := range service.Output {
+			outPort.SendMessage(runtime.NewOpenBracket())
+			outPort.SendMessage(runtime.NewPacket(data[0]))
+			outPort.SendMessage(runtime.NewPacket(data[1]))
+			outPort.SendMessage(runtime.NewCloseBracket())
+		}
+	}()
 
-	// Create service
-	service := NewService()
+	waitCh := make(chan bool)
+	go func() {
+		total := 0
+		for {
+			select {
+			case v := <-inCh:
+				if !v {
+					log.Println("IN port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			case v := <-outCh:
+				if !v {
+					log.Println("OUT port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			}
+			if total >= 2 && waitCh != nil {
+				waitCh <- true
+			}
+		}
+	}()
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Ports connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
 
 	// Wait for the configuration on the options port
 	log.Println("Waiting for configuration...")
@@ -112,22 +162,11 @@ func main() {
 	}
 	log.Println("Listening on", listener.Addr())
 
-	// Start server with listener
 	go service.Serve(listener)
-	go func() {
-		outPort, err = utils.CreateOutputPort(*outputEndpoint)
-		utils.AssertError(err)
-		for data := range service.Output {
-			outPort.SendMessage(runtime.NewOpenBracket())
-			outPort.SendMessage(runtime.NewPacket(data[0]))
-			outPort.SendMessage(runtime.NewPacket(data[1]))
-			outPort.SendMessage(runtime.NewCloseBracket())
-		}
-	}()
 
 	log.Println("Started...")
 	var (
-		connId string
+		connID string
 		data   []byte
 	)
 	for {
@@ -141,16 +180,16 @@ func main() {
 		}
 		switch {
 		case runtime.IsOpenBracket(ip):
-			connId = ""
+			connID = ""
 			data = nil
 		case runtime.IsPacket(ip):
-			if connId == "" {
-				connId = string(ip[1])
+			if connID == "" {
+				connID = string(ip[1])
 			} else {
 				data = ip[1]
 			}
 		case runtime.IsCloseBracket(ip):
-			service.Dispatch(connId, data)
+			service.Dispatch(connID, data)
 		}
 	}
 }

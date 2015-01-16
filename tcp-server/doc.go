@@ -6,6 +6,7 @@ import (
 
 var registryEntry = &library.Entry{
 	Description: "Creates a TCP server and binds to an address/port received from options",
+	Elementary:  true,
 	Inports: []library.EntryPort{
 		library.EntryPort{
 			Name:        "OPTIONS",

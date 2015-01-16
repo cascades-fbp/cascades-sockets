@@ -11,8 +11,8 @@ This repository contains the following components:
 Usage of the server component:
 
 ```
-$ ./components/tcp/server
-Usage of ./components/tcp/server:
+$ ./components/socket/tcp-server
+Usage of ./components/socket/tcp-server:
   -debug=false: Enable debug mode
   -json=false: Print component documentation in JSON
   -port.in="": Component's input port endpoint
@@ -24,7 +24,7 @@ Example (TCP echo server):
 
 ```
 # Configure server and forward its output to packet cloning component
-'localhost:9999' -> OPTIONS Server(tcp/server) OUT -> IN Copy(core/splitter)
+'localhost:9999' -> OPTIONS Server(sockets/tcp-server) OUT -> IN Copy(core/splitter)
 
 # Show incoming data on the screen
 Copy OUT[0] -> IN Log(core/console)
